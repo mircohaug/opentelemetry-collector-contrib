@@ -63,12 +63,13 @@ type dataPoints interface {
 
 // deltaMetricMetadata contains the metadata required to perform rate/delta calculation
 type deltaMetricMetadata struct {
-	adjustToDelta bool
-	metricName    string
-	timestampMs   int64
-	namespace     string
-	logGroup      string
-	logStream     string
+	adjustToDelta              bool
+	retainInitialValueForDelta bool
+	metricName                 string
+	timestampMs                int64
+	namespace                  string
+	logGroup                   string
+	logStream                  string
 }
 
 func mergeLabels(m deltaMetricMetadata, labels map[string]string) map[string]string {
@@ -127,6 +128,13 @@ func (dps numberDataPointSlice) At(i int) (dataPoint, bool) {
 		var deltaVal interface{}
 		deltaVal, retained = deltaMetricCalculator.Calculate(dps.metricName, mergeLabels(dps.deltaMetricMetadata, labels),
 			metricVal, metric.Timestamp().AsTime())
+
+		// If a delta to the previous data point could not be computed use the current metric value instead
+		if !retained && dps.retainInitialValueForDelta {
+			retained = true
+			deltaVal = metricVal
+		}
+
 		if !retained {
 			return dataPoint{}, retained
 		}
@@ -173,8 +181,16 @@ func (dps summaryDataPointSlice) At(i int) (dataPoint, bool) {
 	retained := true
 	if dps.adjustToDelta {
 		var delta interface{}
+		currentValue := summaryMetricEntry{metric.Sum(), metric.Count()}
 		delta, retained = summaryMetricCalculator.Calculate(dps.metricName, mergeLabels(dps.deltaMetricMetadata, labels),
-			summaryMetricEntry{metric.Sum(), metric.Count()}, metric.Timestamp().AsTime())
+			currentValue, metric.Timestamp().AsTime())
+
+		// If a delta to the previous data point could not be computed use the current metric value instead
+		if !retained && dps.retainInitialValueForDelta {
+			retained = true
+			delta = currentValue
+		}
+
 		if !retained {
 			return dataPoint{}, retained
 		}
@@ -220,6 +236,7 @@ func createLabels(attributes pcommon.Map, instrLibName string) map[string]string
 func getDataPoints(pmd pmetric.Metric, metadata cWMetricMetadata, logger *zap.Logger) (dps dataPoints) {
 	adjusterMetadata := deltaMetricMetadata{
 		false,
+		metadata.retainInitialValueForDelta,
 		pmd.Name(),
 		metadata.timestampMs,
 		metadata.namespace,
