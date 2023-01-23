@@ -63,11 +63,12 @@ type dataPoints interface {
 
 // deltaMetricMetadata contains the metadata required to perform rate/delta calculation
 type deltaMetricMetadata struct {
-	adjustToDelta bool
-	metricName    string
-	namespace     string
-	logGroup      string
-	logStream     string
+	adjustToDelta              bool
+	retainInitialValueForDelta bool
+	metricName                 string
+	namespace                  string
+	logGroup                   string
+	logStream                  string
 }
 
 // numberDataPointSlice is a wrapper for pmetric.NumberDataPointSlice
@@ -114,6 +115,13 @@ func (dps numberDataPointSlice) At(i int) (dataPoint, bool) {
 		var deltaVal interface{}
 		mKey := aws.NewKey(dps.deltaMetricMetadata, labels)
 		deltaVal, retained = deltaMetricCalculator.Calculate(mKey, metricVal, metric.Timestamp().AsTime())
+
+		// If a delta to the previous data point could not be computed use the current metric value instead
+		if !retained && dps.retainInitialValueForDelta {
+			retained = true
+			deltaVal = metricVal
+		}
+
 		if !retained {
 			return dataPoint{}, retained
 		}
@@ -163,6 +171,13 @@ func (dps summaryDataPointSlice) At(i int) (dataPoint, bool) {
 		mKey := aws.NewKey(dps.deltaMetricMetadata, labels)
 
 		delta, retained = summaryMetricCalculator.Calculate(mKey, summaryMetricEntry{sum, count}, metric.Timestamp().AsTime())
+
+		// If a delta to the previous data point could not be computed use the current metric value instead
+		if !retained && dps.retainInitialValueForDelta {
+			retained = true
+			delta = summaryMetricEntry{sum, count}
+		}
+
 		if !retained {
 			return dataPoint{}, retained
 		}
@@ -208,6 +223,7 @@ func createLabels(attributes pcommon.Map, instrLibName string) map[string]string
 func getDataPoints(pmd pmetric.Metric, metadata cWMetricMetadata, logger *zap.Logger) (dps dataPoints) {
 	adjusterMetadata := deltaMetricMetadata{
 		false,
+		metadata.retainInitialValueForDelta,
 		pmd.Name(),
 		metadata.namespace,
 		metadata.logGroup,

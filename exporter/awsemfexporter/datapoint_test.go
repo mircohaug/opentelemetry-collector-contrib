@@ -15,6 +15,7 @@
 package awsemfexporter
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 	"time"
@@ -275,131 +276,145 @@ func setupDataPointCache() {
 }
 
 func TestIntDataPointSliceAt(t *testing.T) {
-	setupDataPointCache()
+	for _, retainInitialValueOfDeltaMetric := range []bool{true, false} {
+		setupDataPointCache()
 
-	instrLibName := "cloudwatch-otel"
+		instrLibName := "cloudwatch-otel"
 
-	testDeltaCases := []struct {
-		testName        string
-		adjustToDelta   bool
-		value           interface{}
-		calculatedValue interface{}
-	}{
-		{
-			"w/ 1st delta calculation",
-			true,
-			int64(-17),
-			float64(0),
-		},
-		{
-			"w/ 2nd delta calculation",
-			true,
-			int64(1),
-			float64(18),
-		},
-		{
-			"w/o delta calculation",
-			false,
-			int64(10),
-			float64(10),
-		},
-	}
+		testDeltaCases := []struct {
+			testName         string
+			adjustToDelta    bool
+			value            interface{}
+			calculatedValue  interface{}
+			expectedRetained bool
+		}{
+			{
+				fmt.Sprintf("w/ 1st delta calculation retainInitialValueOfDeltaMetric=%t", retainInitialValueOfDeltaMetric),
+				true,
+				int64(-17),
+				float64(-17),
+				retainInitialValueOfDeltaMetric,
+			},
+			{
+				"w/ 2nd delta calculation",
+				true,
+				int64(1),
+				float64(18),
+				true,
+			},
+			{
+				"w/o delta calculation",
+				false,
+				int64(10),
+				float64(10),
+				true,
+			},
+		}
 
-	for i, tc := range testDeltaCases {
-		t.Run(tc.testName, func(t *testing.T) {
-			testDPS := pmetric.NewNumberDataPointSlice()
-			testDP := testDPS.AppendEmpty()
-			testDP.SetIntValue(tc.value.(int64))
-			testDP.Attributes().PutStr("label", "value")
+		for _, tc := range testDeltaCases {
+			t.Run(tc.testName, func(t *testing.T) {
+				testDPS := pmetric.NewNumberDataPointSlice()
+				testDP := testDPS.AppendEmpty()
+				testDP.SetIntValue(tc.value.(int64))
+				testDP.Attributes().PutStr("label", "value")
 
-			dps := numberDataPointSlice{
-				instrLibName,
-				deltaMetricMetadata{
-					tc.adjustToDelta,
-					"foo",
-					"namespace",
-					"log-group",
-					"log-stream",
-				},
-				testDPS,
-			}
+				dps := numberDataPointSlice{
+					instrLibName,
+					deltaMetricMetadata{
+						tc.adjustToDelta,
+						retainInitialValueOfDeltaMetric,
+						"foo",
+						"namespace",
+						"log-group",
+						"log-stream",
+					},
+					testDPS,
+				}
 
-			expectedDP := dataPoint{
-				value: tc.calculatedValue,
-				labels: map[string]string{
-					oTellibDimensionKey: instrLibName,
-					"label":             "value",
-				},
-			}
+				expectedDP := dataPoint{
+					value: tc.calculatedValue,
+					labels: map[string]string{
+						oTellibDimensionKey: instrLibName,
+						"label":             "value",
+					},
+				}
 
-			assert.Equal(t, 1, dps.Len())
-			dp, retained := dps.At(0)
-			assert.Equal(t, i > 0, retained)
-			if retained {
-				assert.Equal(t, expectedDP.labels, dp.labels)
-				assert.InDelta(t, expectedDP.value.(float64), dp.value.(float64), 0.02)
-			}
-		})
+				assert.Equal(t, 1, dps.Len())
+				dp, retained := dps.At(0)
+				assert.Equal(t, tc.expectedRetained, retained)
+				if retained {
+					assert.Equal(t, expectedDP.labels, dp.labels)
+					assert.InDelta(t, expectedDP.value.(float64), dp.value.(float64), 0.02)
+				}
+			})
+		}
 	}
 }
 
 func TestDoubleDataPointSliceAt(t *testing.T) {
-	setupDataPointCache()
+	for _, retainInitialValueOfDeltaMetric := range []bool{true, false} {
+		setupDataPointCache()
 
-	instrLibName := "cloudwatch-otel"
+		instrLibName := "cloudwatch-otel"
 
-	testDeltaCases := []struct {
-		testName        string
-		adjustToDelta   bool
-		value           interface{}
-		calculatedValue interface{}
-	}{
-		{
-			"w/ 1st delta calculation",
-			true,
-			0.4,
-			0.4,
-		},
-		{
-			"w/ 2nd delta calculation",
-			true,
-			0.8,
-			0.4,
-		},
-		{
-			"w/o delta calculation",
-			false,
-			0.5,
-			0.5,
-		},
-	}
+		testDeltaCases := []struct {
+			testName         string
+			adjustToDelta    bool
+			value            interface{}
+			calculatedValue  interface{}
+			expectedRetained bool
+		}{
+			{
+				fmt.Sprintf("w/ 1st delta calculation retainInitialValueOfDeltaMetric=%t", retainInitialValueOfDeltaMetric),
+				true,
+				0.4,
+				0.4,
+				retainInitialValueOfDeltaMetric,
+			},
+			{
+				"w/ 2nd delta calculation",
+				true,
+				0.8,
+				0.4,
+				true,
+			},
+			{
+				"w/o delta calculation",
+				false,
+				0.5,
+				0.5,
+				true,
+			},
+		}
 
-	for i, tc := range testDeltaCases {
-		t.Run(tc.testName, func(t *testing.T) {
-			testDPS := pmetric.NewNumberDataPointSlice()
-			testDP := testDPS.AppendEmpty()
-			testDP.SetDoubleValue(tc.value.(float64))
-			testDP.Attributes().PutStr("label1", "value1")
+		for _, tc := range testDeltaCases {
+			t.Run(tc.testName, func(t *testing.T) {
+				testDPS := pmetric.NewNumberDataPointSlice()
+				testDP := testDPS.AppendEmpty()
+				testDP.SetDoubleValue(tc.value.(float64))
+				testDP.Attributes().PutStr("label1", "value1")
 
-			dps := numberDataPointSlice{
-				instrLibName,
-				deltaMetricMetadata{
-					tc.adjustToDelta,
-					"foo",
-					"namespace",
-					"log-group",
-					"log-stream",
-				},
-				testDPS,
-			}
+				dps := numberDataPointSlice{
+					instrLibName,
+					deltaMetricMetadata{
+						tc.adjustToDelta,
+						retainInitialValueOfDeltaMetric,
+						"foo",
+						"namespace",
+						"log-group",
+						"log-stream",
+					},
+					testDPS,
+				}
 
-			assert.Equal(t, 1, dps.Len())
-			dp, retained := dps.At(0)
-			assert.Equal(t, i > 0, retained)
-			if retained {
-				assert.InDelta(t, tc.calculatedValue.(float64), dp.value.(float64), 0.002)
-			}
-		})
+				assert.Equal(t, 1, dps.Len())
+				dp, retained := dps.At(0)
+				assert.Equal(t, tc.expectedRetained, retained)
+				if retained {
+					assert.InDelta(t, tc.calculatedValue.(float64), dp.value.(float64), 0.002)
+				}
+			})
+		}
 	}
 }
 
@@ -502,86 +517,93 @@ func TestHistogramDataPointSliceAtWithoutMinMax(t *testing.T) {
 }
 
 func TestSummaryDataPointSliceAt(t *testing.T) {
-	setupDataPointCache()
+	for _, retainInitialValueOfDeltaMetric := range []bool{true, false} {
+		setupDataPointCache()
 
-	instrLibName := "cloudwatch-otel"
+		instrLibName := "cloudwatch-otel"
 
-	testCases := []struct {
-		testName           string
-		inputSumCount      []interface{}
-		calculatedSumCount []interface{}
-	}{
-		{
-			"1st summary count calculation",
-			[]interface{}{17.3, uint64(17)},
-			[]interface{}{float64(0), uint64(0)},
-		},
-		{
-			"2nd summary count calculation",
-			[]interface{}{float64(100), uint64(25)},
-			[]interface{}{82.7, uint64(8)},
-		},
-		{
-			"3rd summary count calculation",
-			[]interface{}{float64(120), uint64(26)},
-			[]interface{}{float64(20), uint64(1)},
-		},
-	}
+		testCases := []struct {
+			testName           string
+			inputSumCount      []interface{}
+			calculatedSumCount []interface{}
+			expectedRetained   bool
+		}{
+			{
+				fmt.Sprintf("1st summary count calculation retainInitialValueOfDeltaMetric=%t", retainInitialValueOfDeltaMetric),
+				[]interface{}{17.3, uint64(17)},
+				[]interface{}{17.3, uint64(17)},
+				retainInitialValueOfDeltaMetric,
+			},
+			{
+				"2nd summary count calculation",
+				[]interface{}{float64(100), uint64(25)},
+				[]interface{}{82.7, uint64(8)},
+				true,
+			},
+			{
+				"3rd summary count calculation",
+				[]interface{}{float64(120), uint64(26)},
+				[]interface{}{float64(20), uint64(1)},
+				true,
+			},
+		}
 
-	for i, tt := range testCases {
-		t.Run(tt.testName, func(t *testing.T) {
-			testDPS := pmetric.NewSummaryDataPointSlice()
-			testDP := testDPS.AppendEmpty()
-			testDP.SetSum(tt.inputSumCount[0].(float64))
-			testDP.SetCount(tt.inputSumCount[1].(uint64))
+		for _, tt := range testCases {
+			t.Run(tt.testName, func(t *testing.T) {
+				testDPS := pmetric.NewSummaryDataPointSlice()
+				testDP := testDPS.AppendEmpty()
+				testDP.SetSum(tt.inputSumCount[0].(float64))
+				testDP.SetCount(tt.inputSumCount[1].(uint64))
 
-			testDP.QuantileValues().EnsureCapacity(2)
-			testQuantileValue := testDP.QuantileValues().AppendEmpty()
-			testQuantileValue.SetQuantile(0)
-			testQuantileValue.SetValue(float64(1))
-			testQuantileValue = testDP.QuantileValues().AppendEmpty()
-			testQuantileValue.SetQuantile(100)
-			testQuantileValue.SetValue(float64(5))
-			testDP.Attributes().PutStr("label1", "value1")
+				testDP.QuantileValues().EnsureCapacity(2)
+				testQuantileValue := testDP.QuantileValues().AppendEmpty()
+				testQuantileValue.SetQuantile(0)
+				testQuantileValue.SetValue(float64(1))
+				testQuantileValue = testDP.QuantileValues().AppendEmpty()
+				testQuantileValue.SetQuantile(100)
+				testQuantileValue.SetValue(float64(5))
+				testDP.Attributes().PutStr("label1", "value1")
 
-			dps := summaryDataPointSlice{
-				instrLibName,
-				deltaMetricMetadata{
-					true,
-					"foo",
-					"namespace",
-					"log-group",
-					"log-stream",
-				},
-				testDPS,
-			}
+				dps := summaryDataPointSlice{
+					instrLibName,
+					deltaMetricMetadata{
+						true,
+						retainInitialValueOfDeltaMetric,
+						"foo",
+						"namespace",
+						"log-group",
+						"log-stream",
+					},
+					testDPS,
+				}
 
-			expectedDP := dataPoint{
-				value: &cWMetricStats{
-					Max:   5,
-					Min:   1,
-					Sum:   tt.calculatedSumCount[0].(float64),
-					Count: tt.calculatedSumCount[1].(uint64),
-				},
-				labels: map[string]string{
-					oTellibDimensionKey: instrLibName,
-					"label1":            "value1",
-				},
-			}
+				expectedDP := dataPoint{
+					value: &cWMetricStats{
+						Max:   5,
+						Min:   1,
+						Sum:   tt.calculatedSumCount[0].(float64),
+						Count: tt.calculatedSumCount[1].(uint64),
+					},
+					labels: map[string]string{
+						oTellibDimensionKey: instrLibName,
+						"label1":            "value1",
+					},
+				}
 
-			assert.Equal(t, 1, dps.Len())
-			dp, retained := dps.At(0)
-			assert.Equal(t, i > 0, retained)
-			if retained {
-				expectedMetricStats := expectedDP.value.(*cWMetricStats)
-				actualMetricsStats := dp.value.(*cWMetricStats)
-				assert.Equal(t, expectedDP.labels, dp.labels)
-				assert.Equal(t, expectedMetricStats.Max, actualMetricsStats.Max)
-				assert.Equal(t, expectedMetricStats.Min, actualMetricsStats.Min)
-				assert.InDelta(t, expectedMetricStats.Count, actualMetricsStats.Count, 0.1)
-				assert.InDelta(t, expectedMetricStats.Sum, actualMetricsStats.Sum, 0.02)
-			}
-		})
+				assert.Equal(t, 1, dps.Len())
+				dp, retained := dps.At(0)
+				assert.Equal(t, tt.expectedRetained, retained)
+				if retained {
+					expectedMetricStats := expectedDP.value.(*cWMetricStats)
+					actualMetricsStats := dp.value.(*cWMetricStats)
+					assert.Equal(t, expectedDP.labels, dp.labels)
+					assert.Equal(t, expectedMetricStats.Max, actualMetricsStats.Max)
+					assert.Equal(t, expectedMetricStats.Min, actualMetricsStats.Min)
+					assert.InDelta(t, expectedMetricStats.Count, actualMetricsStats.Count, 0.1)
+					assert.InDelta(t, expectedMetricStats.Sum, actualMetricsStats.Sum, 0.02)
+				}
+			})
+		}
 	}
 }
 
@@ -620,6 +642,7 @@ func TestGetDataPoints(t *testing.T) {
 
 	dmm := deltaMetricMetadata{
 		false,
+		false,
 		"foo",
 		"namespace",
 		"log-group",
@@ -627,6 +650,7 @@ func TestGetDataPoints(t *testing.T) {
 	}
 	cumulativeDmm := deltaMetricMetadata{
 		true,
+		false,
 		"foo",
 		"namespace",
 		"log-group",
